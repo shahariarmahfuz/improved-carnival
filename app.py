@@ -1,48 +1,47 @@
 from flask import Flask, request, Response
 import base64
 import mimetypes
-from google import genai
-from google.genai import types
+import google.generativeai as genai
+from google.generativeai.types import Content, Part, GenerateContentConfig
 
 app = Flask(__name__)
 
 # সরাসরি API কী ব্যবহার করুন
 API_KEY = "AIzaSyA6a7BCzd0ut64DW6aTeOXDPwBQUar7zok"
 
-def generate_image(prompt):
-    client = genai.Client(api_key=API_KEY)  # সরাসরি API কী ব্যবহার
+# Gemini AI ক্লায়েন্ট ইনিশিয়ালাইজ করুন
+genai.configure(api_key=API_KEY)
 
-    model = "gemini-2.0-flash-exp-image-generation"
+def generate_image(prompt):
+    model = genai.GenerativeModel("gemini-pro-vision")  # মডেল সিলেক্ট করুন
     contents = [
-        types.Content(
+        Content(
             role="user",
             parts=[
-                types.Part.from_text(text=prompt),
+                Part.from_text(text=prompt),
             ],
         ),
     ]
     
-    generate_content_config = types.GenerateContentConfig(
+    generate_content_config = GenerateContentConfig(
         temperature=1,
         top_p=0.95,
         top_k=40,
         max_output_tokens=8192,
-        response_modalities=["image", "text"],
-        response_mime_type="text/plain",
     )
 
-    for chunk in client.models.generate_content_stream(
-        model=model,
+    response = model.generate_content(
         contents=contents,
-        config=generate_content_config,
-    ):
-        if chunk.candidates and chunk.candidates[0].content and chunk.candidates[0].content.parts:
-            if chunk.candidates[0].content.parts[0].inline_data:
-                inline_data = chunk.candidates[0].content.parts[0].inline_data
-                return {
-                    "mime_type": inline_data.mime_type,
-                    "data": base64.b64encode(inline_data.data).decode('utf-8')
-                }
+        generation_config=generate_content_config,
+    )
+
+    if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
+        if response.candidates[0].content.parts[0].inline_data:
+            inline_data = response.candidates[0].content.parts[0].inline_data
+            return {
+                "mime_type": inline_data.mime_type,
+                "data": base64.b64encode(inline_data.data).decode('utf-8')
+            }
     return None
 
 @app.route('/gen')
