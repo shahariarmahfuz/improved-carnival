@@ -1,70 +1,85 @@
-from flask import Flask, request, Response
+import os
+import uuid
 import base64
-import google.generativeai as genai
+import mimetypes
+from flask import Flask, send_from_directory, jsonify
+from google import genai
+from google.genai import types
 
 app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = 'static/images'
 
-# সরাসরি API কী ব্যবহার করুন
-API_KEY = "AIzaSyA6a7BCzd0ut64DW6aTeOXDPwBQUar7zok"
+os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Gemini AI ক্লায়েন্ট ইনিশিয়ালাইজ করুন
-genai.configure(api_key=API_KEY)
+def save_binary_file(file_name, data):
+    with open(file_name, "wb") as f:
+        f.write(data)
 
 def generate_image(prompt):
-    model = genai.GenerativeModel("gemini-2.0-flash-exp-image-generation")  # মডেল সিলেক্ট করুন
+    client = genai.Client(api_key=os.environ.get("AIzaSyA6a7BCzd0ut64DW6aTeOXDPwBQUar7zok"))
     
-    # প্রম্পট ব্যবহার করে কন্টেন্ট তৈরি করুন
     contents = [
-        {
-            "role": "user",
-            "parts": [{"text": prompt}]
-        }
+        types.Content(
+            role="user",
+            parts=[types.Part.from_text(text=prompt)],
+        )
     ]
     
-    # জেনারেশন কনফিগারেশন
-    generation_config = {
-        "temperature": 1,
-        "top_p": 0.95,
-        "top_k": 40,
-        "max_output_tokens": 8192,
-    }
-
-    # ইমেজ জেনারেট করুন
-    response = model.generate_content(
-        contents=contents,
-        generation_config=generation_config,
+    generate_content_config = types.GenerateContentConfig(
+        temperature=1,
+        top_p=0.95,
+        top_k=40,
+        max_output_tokens=8192,
+        response_modalities=["image", "text"],
+        response_mime_type="text/plain",
     )
-
-    # রেসপন্স থেকে ইমেজ ডেটা এক্সট্রাক্ট করুন
-    if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
-        if response.candidates[0].content.parts[0].inline_data:
-            inline_data = response.candidates[0].content.parts[0].inline_data
-            return {
-                "mime_type": inline_data.mime_type,
-                "data": base64.b64encode(inline_data.data).decode('utf-8')
-            }
+    
+    for chunk in client.models.generate_content_stream(
+        model="gemini-2.0-flash-exp-image-generation",
+        contents=contents,
+        config=generate_content_config,
+    ):
+        if chunk.candidates and chunk.candidates[0].content.parts:
+            if chunk.candidates[0].content.parts[0].inline_data:
+                unique_id = str(uuid.uuid4()).upper()
+                inline_data = chunk.candidates[0].content.parts[0].inline_data
+                file_extension = mimetypes.guess_extension(inline_data.mime_type)
+                filename = f"{unique_id}_output{file_extension}"
+                file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                
+                save_binary_file(file_path, inline_data.data)
+                return filename
     return None
 
 @app.route('/gen')
-def generate():
-    prompt = request.args.get('p', '')
+def generate_image_route():
+    prompt = request.args.get('p')
     if not prompt:
-        return "Please provide a prompt using ?p= parameter", 400
+        return jsonify({"error": "Missing prompt parameter"}), 400
     
-    image_data = generate_image(prompt)
-    if not image_data:
-        return "Failed to generate image", 500
+    try:
+        filename = generate_image(prompt)
+        if filename:
+            image_url = f"/images/{filename}"
+            return jsonify({
+                "image_url": image_url,
+                "download_url": f"/download/{filename}"
+            })
+        return jsonify({"error": "Image generation failed"}), 500
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
-    html = f"""
-    <html>
-        <body>
-            <h1>Generated Image for: {prompt}</h1>
-            <img src="data:{image_data['mime_type']};base64,{image_data['data']}" 
-                 style="max-width: 100%; height: auto;">
-        </body>
-    </html>
-    """
-    return Response(html, mimetype='text/html')
+@app.route('/images/<filename>')
+def serve_image(filename):
+    return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
+
+@app.route('/download/<filename>')
+def download_image(filename):
+    return send_from_directory(
+        app.config['UPLOAD_FOLDER'], 
+        filename, 
+        as_attachment=True
+    )
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)))
