@@ -2,7 +2,6 @@ from flask import Flask, request, Response
 import base64
 import mimetypes
 import google.generativeai as genai
-from google.generativeai.types import Content, Part, GenerateContentConfig
 
 app = Flask(__name__)
 
