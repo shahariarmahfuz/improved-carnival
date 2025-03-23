@@ -11,7 +11,7 @@ API_KEY = "AIzaSyA6a7BCzd0ut64DW6aTeOXDPwBQUar7zok"
 genai.configure(api_key=API_KEY)
 
 def generate_image(prompt):
-    model = genai.GenerativeModel("gemini-pro-vision")  # মডেল সিলেক্ট করুন
+    model = genai.GenerativeModel("gemini-2.0-flash-exp-image-generation")  # মডেল সিলেক্ট করুন
     
     # প্রম্পট ব্যবহার করে কন্টেন্ট তৈরি করুন
     contents = [
