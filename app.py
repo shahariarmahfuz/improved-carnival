@@ -1,6 +1,5 @@
 from flask import Flask, request, Response
 import base64
-import mimetypes
 import google.generativeai as genai
 
 app = Flask(__name__)
@@ -13,27 +12,30 @@ genai.configure(api_key=API_KEY)
 
 def generate_image(prompt):
     model = genai.GenerativeModel("gemini-pro-vision")  # মডেল সিলেক্ট করুন
+    
+    # প্রম্পট ব্যবহার করে কন্টেন্ট তৈরি করুন
     contents = [
-        Content(
-            role="user",
-            parts=[
-                Part.from_text(text=prompt),
-            ],
-        ),
+        {
+            "role": "user",
+            "parts": [{"text": prompt}]
+        }
     ]
     
-    generate_content_config = GenerateContentConfig(
-        temperature=1,
-        top_p=0.95,
-        top_k=40,
-        max_output_tokens=8192,
-    )
+    # জেনারেশন কনফিগারেশন
+    generation_config = {
+        "temperature": 1,
+        "top_p": 0.95,
+        "top_k": 40,
+        "max_output_tokens": 8192,
+    }
 
+    # ইমেজ জেনারেট করুন
     response = model.generate_content(
         contents=contents,
-        generation_config=generate_content_config,
+        generation_config=generation_config,
     )
 
+    # রেসপন্স থেকে ইমেজ ডেটা এক্সট্রাক্ট করুন
     if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
         if response.candidates[0].content.parts[0].inline_data:
             inline_data = response.candidates[0].content.parts[0].inline_data
