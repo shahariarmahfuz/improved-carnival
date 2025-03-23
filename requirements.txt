@@ -1,2 +1,5 @@
 flask
 google-generativeai
+python-dotenv
+uuid
+gunicorn
